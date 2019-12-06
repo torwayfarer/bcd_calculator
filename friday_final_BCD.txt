@@ -1,0 +1,310 @@
+
+module dflipflop_out(input wire[15:0] D, input Clk, output reg[15:0] D1);
+always @ (posedge Clk)
+ if(Clk)
+ begin
+ D1 <= D;
+ end
+endmodule 
+
+
+module dflipflop_opc(input wire[2:0] D, input Clk, output reg[2:0] D1);
+always @ (posedge Clk)
+ if(Clk)
+ begin
+ D1 <= D;
+ end
+endmodule 
+module dflipflop_in(input wire[7:0] D, input Clk, output reg[7:0] D1);
+always @ (posedge Clk)
+ if(Clk)
+ begin
+ D1 <= D;
+ end
+endmodule 
+
+module dflipflop_sign(input wire D, input Clk, output reg Q);
+always @ (posedge Clk)
+ if(Clk)
+ begin
+ Q <= D;
+ end
+endmodule 
+
+module adder(A, B, SUM);  
+input  [7:0] A;  
+input  [7:0] B;  
+output [15:0] SUM; 
+ 
+  assign SUM = A + B;  
+endmodule 
+
+module clock_gen;
+	reg clk;
+initial clk = 0;
+always #10 clk=~clk;
+endmodule
+
+module my(input wire [7:0]X ,input reg [7:0]Y,output reg [15:0]Z, input wire [2:0] i_opcode);
+reg [15:0] m;
+//reg [15:0] n;
+reg clk;
+wire [7:0] x;
+wire [7:0] y;
+wire [15:0] z;
+assign x = X;
+assign y = Y;
+assign z = Z;
+///dflipflop fp;
+//dflipflop fp1;
+initial clk = 0;
+always #15 clk=~clk;
+	
+	always @(posedge clk) begin
+		
+		case (i_opcode)
+			3'b 000: m= x + y;
+			3'b 001: m= x - y;
+			3'b 010: m= x * y;
+			//3'b 011: m= z + y;
+			//3'b 100: m= z - y;
+		endcase
+		
+		
+	end
+always
+begin
+#3 ;
+end
+dflipflop fp1(m,clk,z);
+endmodule
+
+module BCD_Calculator
+    (
+    input wire                          i_clk,
+    input wire                          i_rst,
+
+    input wire                          i_en,
+    input wire [2:0]                    i_opcode,
+
+    input wire [7:0]                    i_bcd_a,
+    input wire [7:0]                    i_bcd_b,
+
+    output reg                          o_rdy,
+    output reg                          o_valid,
+    output reg                         o_sign,
+
+    output reg [15:0]                   o_bcd_o
+    );
+
+
+reg [7:0] a;
+reg [7:0] b;
+reg [2:0] opcode;
+reg en;
+initial en=0;
+wire rdy;
+wire valid;
+reg v;
+reg cycle_delay;
+
+initial o_rdy=1;
+initial o_bcd_o=0;
+initial o_valid=0;
+initial o_sign=0;
+reg [15:0] m;
+reg sig;
+reg from_mult;
+initial from_mult=0;
+initial sig=0;
+
+///////////////////////////////////////////////
+parameter s0 = 0, s1 = 1, s2 = 2;
+reg [2:0] count = 0;
+reg [1:0] state = 0;
+reg [15:0] P, T;
+reg [7:0] y_reg;
+///////////////////////////////////////////////
+
+
+///BEDORE
+//reg clk;
+
+//initial clk = 0;
+//always #15 clk=~clk;
+
+/*
+dflipflop_in fp_in1(i_bcd_a,clk,a);
+dflipflop_in fp_in2(i_bcd_b,clk,b);
+dflipflop_opc fp_opc(i_opcode,clk,opcode);
+*/
+
+always @ (posedge i_clk) begin 
+if (o_rdy==1) begin
+	if (i_en==1) begin
+		a<= i_bcd_a;
+		b<= i_bcd_b;
+		opcode<= i_opcode;
+		en<=1;
+		end
+	else en<=0;
+	end
+end
+
+
+
+
+always @(*) begin 
+if (cycle_delay==1) begin 
+	o_rdy<=0;
+	opcode<= 3'b 010;
+	en<=1;
+	end
+else o_rdy<=1;
+end
+
+	always @(posedge i_clk) begin
+		if (en==1) begin
+		case (opcode)
+			3'b 000: begin 
+				from_mult<=0;
+				m<= a + b;
+				sig<=0;
+				v<=1;
+				cycle_delay<=0;
+				end
+			3'b 001: begin
+				from_mult<=0;
+				v<=1;
+				cycle_delay<=0;
+				if (a>=b) begin
+					sig<=0;
+					m<=a-b;
+					end
+				else begin 
+					sig<=1;
+					m<=b-a;
+					end
+				end
+			3'b 010: begin 
+			
+				//m<= a * b;
+				///////////////////////////////////////////////
+				//always @(posedge i_clk) begin
+        				case (state)
+            				s0: begin
+                				count <= 0;
+                				P <= 0;
+                				y_reg <= b;
+                				T <= {{8{1'b0}}, a};
+                				state <= s1;
+						cycle_delay<=1;
+            				 end
+           				 s1: begin
+                				if(count == 3'b111) begin
+                    				state <= s2;
+						end
+                				else begin
+                    					if(y_reg[0] == 1'b1) begin
+	                        				P <= P + T;
+								end
+	                    				else begin
+	                        				P <= P;
+								end
+							cycle_delay<=1;
+                   					y_reg <= y_reg >> 1;
+	                    				T <= T << 1;
+	                    				count <= count + 1;
+	                    				state <= s1;
+                				end
+            				end
+            				s2: begin
+                				o_bcd_o <= P;
+                				state <= s0;
+						cycle_delay<=0;
+						opcode<=i_opcode;
+						o_sign<=0;
+						o_valid<=1;	
+						from_mult<=1;
+						o_rdy<=1;
+            				end
+            				default: ;
+        				endcase
+				//end
+				//m<= result;
+				///////////////////////////////////////////////
+
+				
+				end
+			3'b 011: begin
+////
+				from_mult<=0;
+				cycle_delay<=0;
+				v<=1;
+				if (sig==0) begin
+					m<= m + b;
+					sig<=0;
+					end
+				else begin
+					if (m <= b) begin
+						sig<=0;
+						m<= b-m;
+						end
+					else begin
+						sig<=1;
+						m<= m - b;
+						end
+					end
+				end
+			3'b 100: begin
+///				
+				from_mult<=0;
+				cycle_delay<=0;
+				v<=1;
+				if (sig==0) begin
+					if (m>=b) begin
+						sig<=0;
+						m<=m-b;
+						end
+					else begin 
+						sig<=1;
+						m<=b-m;
+						end
+					end
+				else begin
+					sig<=1;
+					m<=b+m;
+					end
+				end
+		default: ;
+		endcase
+		end
+		
+		
+	end
+
+
+
+always @ (posedge i_clk) begin 
+if (i_rst==1) begin
+	v<=0;
+	m<=0;
+	sig<=0;
+	a<=0;
+	b<=0;
+end
+else if (o_rdy==1 && from_mult==0) begin
+		begin 
+		o_valid<= v;
+		o_bcd_o<=m;
+		o_sign<= sig;
+		end
+	end
+end
+
+
+
+endmodule
+
+
+////FRIDAY
